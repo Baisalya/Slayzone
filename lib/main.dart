@@ -4,8 +4,15 @@ import 'pages/gallery_page.dart';
 import 'pages/favorites_page.dart';
 import 'pages/journal_page.dart';
 import 'pages/flexcard_page.dart';
-
-void main() {
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    print("Firebase initialized successfully");
+  } catch (e) {
+    print("Error initializing Firebase: $e");
+  }
   runApp(FlexVerseApp());
 }
 
