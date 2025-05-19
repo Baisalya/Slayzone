@@ -39,6 +39,7 @@ dependencies:
   qr_flutter:
   cloud_firestore: ^4.14.0
   firebase_core:
+  firebase_auth:
 dev_dependencies:
   flutter_test:
     sdk: flutter
