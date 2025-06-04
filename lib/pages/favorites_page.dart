@@ -1,105 +1,226 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class FavoritesPage extends StatelessWidget {
-  final List<String> favoriteQuotes = [
-    "Be yourself; everyone else is already taken.",
-    "Dream big. Work hard. Stay focused.",
-    "Happiness is a direction, not a place.",
-  ];
+class FavoritesPage extends StatefulWidget {
+  final bool isEditMode;
+  const FavoritesPage({super.key, required this.isEditMode});
 
-  final List<Map<String, String>> favoriteSongs = [
-    {
-      'title': 'Levitating - Dua Lipa',
-      'url': 'https://open.spotify.com/track/4k6Uh1HXdhtgGpFfTi27nL',
-    },
-    {
-      'title': 'As It Was - Harry Styles',
-      'url': 'https://open.spotify.com/track/4LRPiXqCikLlN15c3yImP7',
-    },
-    {
-      'title': 'Good 4 U - Olivia Rodrigo',
-      'url': 'https://open.spotify.com/track/6PERP62TejQjgHu81z2Kjq',
-    },
-  ];
+  @override
+  State<FavoritesPage> createState() => _FavoritesPageState();
+}
 
-  final List<String> favoritePlaces = [
-    "Paris, France 🇫🇷",
-    "Kyoto, Japan 🇯🇵",
-    "New York City, USA 🗽",
-  ];
+class _FavoritesPageState extends State<FavoritesPage> {
+  List<String> quotes = [];
+  List<Map<String, String>> songs = [];
+  List<String> places = [];
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final String email = 'bashalya@gmail.com'; // 🔒 hardcoded like BioPage
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites();
+  }
+
+  Future<void> _loadFavorites() async {
+    try {
+      final doc = await _firestore.collection('favorites').doc(email).get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        setState(() {
+          quotes = List<String>.from(data['quotes'] ?? []);
+          songs = List<Map<String, String>>.from(
+            (data['songs'] ?? []).map((s) => Map<String, String>.from(s)),
+          );
+          places = List<String>.from(data['places'] ?? []);
+        });
+      } else {
+        // Fallback defaults
+        setState(() {
+          quotes = ['"Be yourself; everyone else is already taken."'];
+          songs = [
+            {'title': 'Shape of You', 'url': 'https://open.spotify.com/track/7qiZfU4dY1lWllzX7mPBI3'}
+          ];
+          places = ['Paris', 'Tokyo'];
+        });
+      }
+    } catch (e) {
+      // Error fallback
+      setState(() {
+        quotes = ['"Be yourself; everyone else is already taken."'];
+        songs = [];
+        places = [];
+      });
+    }
+
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _updateFavorites() async {
+    try {
+      await _firestore.collection('favorites').doc(email).set({
+        'quotes': quotes,
+        'songs': songs,
+        'places': places,
+        'email': email, // optional if you want to query by email too
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Favorites saved")),
+      );
+
+      _loadFavorites(); // optional: refresh after save
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error saving favorites: $e")),
+      );
+    }
+  }
+
+  void _addQuote() async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Add Quote"),
+        content: TextField(controller: controller),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              setState(() => quotes.add(controller.text.trim()));
+              _updateFavorites();
+              Navigator.pop(context);
+            },
+            child: const Text("Add"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addSong() async {
+    final titleController = TextEditingController();
+    final urlController = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Add Song"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: titleController, decoration: const InputDecoration(labelText: "Title")),
+            TextField(controller: urlController, decoration: const InputDecoration(labelText: "Spotify URL")),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              setState(() => songs.add({
+                'title': titleController.text.trim(),
+                'url': urlController.text.trim(),
+              }));
+              _updateFavorites();
+              Navigator.pop(context);
+            },
+            child: const Text("Add"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addPlace() async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Add Place"),
+        content: TextField(controller: controller),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              setState(() => places.add(controller.text.trim()));
+              _updateFavorites();
+              Navigator.pop(context);
+            },
+            child: const Text("Add"),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _launchURL(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      throw 'Could not launch $url';
     }
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Text(title,
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  Widget _buildQuoteCard(String quote) {
-    return Card(
-      color: Colors.deepPurple.shade700,
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Text(
-          "\"$quote\"",
-          style: TextStyle(fontStyle: FontStyle.italic, fontSize: 16),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSongTile(Map<String, String> song) {
-    return ListTile(
-      leading: Icon(Icons.music_note, color: Colors.pinkAccent),
-      title: Text(song['title'] ?? ''),
-      trailing: Icon(Icons.open_in_new),
-      onTap: () => _launchURL(song['url'] ?? ''),
-    );
-  }
-
-  Widget _buildPlaceChip(String place) {
-    return Chip(
-      label: Text(place),
-      backgroundColor: Colors.purple.shade300,
-      labelStyle: TextStyle(color: Colors.white),
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: Text('My Favorites')),
+      appBar: AppBar(
+        title: const Text("My Favorites"),
+        actions: widget.isEditMode
+            ? [
+          PopupMenuButton<String>(
+            onSelected: (choice) {
+              if (choice == "Add Quote") _addQuote();
+              else if (choice == "Add Song") _addSong();
+              else if (choice == "Add Place") _addPlace();
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: "Add Quote", child: Text("➕ Quote")),
+              const PopupMenuItem(value: "Add Song", child: Text("➕ Song")),
+              const PopupMenuItem(value: "Add Place", child: Text("➕ Place")),
+            ],
+          )
+        ]
+            : null,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle("✨ Favorite Quotes"),
-            ...favoriteQuotes.map(_buildQuoteCard).toList(),
-
-            _buildSectionTitle("🎧 Favorite Songs"),
-            ...favoriteSongs.map(_buildSongTile).toList(),
-
-            _buildSectionTitle("📍 Favorite Places"),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: favoritePlaces.map(_buildPlaceChip).toList(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text("✨ Favorite Quotes", style: Theme.of(context).textTheme.headline6),
+          ...quotes.map((q) => Card(
+            color: Colors.deepPurple.shade700,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text("\"$q\"", style: const TextStyle(color: Colors.white)),
             ),
-          ],
-        ),
+          )),
+          const SizedBox(height: 20),
+          Text("🎧 Favorite Songs", style: Theme.of(context).textTheme.headline6),
+          ...songs.map((s) => ListTile(
+            leading: const Icon(Icons.music_note, color: Colors.pink),
+            title: Text(s['title'] ?? ''),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () => _launchURL(s['url'] ?? ''),
+          )),
+          const SizedBox(height: 20),
+          Text("📍 Favorite Places", style: Theme.of(context).textTheme.headline6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: places
+                .map((p) => Chip(label: Text(p), backgroundColor: Colors.purple.shade300))
+                .toList(),
+          ),
+        ]),
       ),
     );
   }
