@@ -43,6 +43,7 @@ dependencies:
   firebase_storage:
   image_picker:
   intl:
+  font_awesome_flutter:
 dev_dependencies:
   flutter_test:
     sdk: flutter
