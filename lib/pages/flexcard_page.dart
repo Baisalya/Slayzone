@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:slayzone/pages/visiting_card_editor.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -24,6 +25,8 @@ class _FlexCardPageState extends State<FlexCardPage> {
   final TextEditingController _youtubeController = TextEditingController();
   final TextEditingController _twitterController = TextEditingController();
   final TextEditingController _githubController = TextEditingController();
+  final TextEditingController _portfolioUrlController = TextEditingController();
+  final TextEditingController _cvUrlController = TextEditingController();
 //visting card
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
@@ -54,6 +57,9 @@ class _FlexCardPageState extends State<FlexCardPage> {
       _youtubeController.text = flexCard['youtube'] ?? '';
       _twitterController.text = flexCard['twitter'] ?? '';
       _githubController.text = flexCard['github'] ?? '';
+      _portfolioUrlController.text = flexCard['portfolio'] ?? '';
+      _cvUrlController.text = flexCard['cv'] ?? '';
+
       //visting card
       _titleController.text = flexCard['title'] ?? '';
       _addressController.text = flexCard['address'] ?? '';
@@ -67,6 +73,12 @@ class _FlexCardPageState extends State<FlexCardPage> {
   }
 
   Future<void> _saveData() async {
+    // Sync the QR data to the corresponding field
+    if (_selectedQRType == 'Portfolio') {
+      _portfolioUrlController.text = _qrDataController.text.trim();
+    } else if (_selectedQRType == 'Download CV') {
+      _cvUrlController.text = _qrDataController.text.trim();
+    }
     await _firestore.collection('users').doc(userEmail).set({
       'name': _nameController.text.trim(),
       'flexCard': {
@@ -78,6 +90,9 @@ class _FlexCardPageState extends State<FlexCardPage> {
         'github': _githubController.text.trim(),
         'qrData': _qrDataController.text.trim(),
         'qrType': _selectedQRType,
+        'portfolio': _portfolioUrlController.text.trim(),
+        'cv': _cvUrlController.text.trim(),
+
         //visting card
         'title': _titleController.text.trim(),
         'address': _addressController.text.trim(),
@@ -161,7 +176,19 @@ class _FlexCardPageState extends State<FlexCardPage> {
                     children: [
                       _buildQRTypeDropdown(),  // 🔽 Always show dropdown
                       const SizedBox(height: 10),
-                      widget.isEditMode ? _buildTextField(_qrDataController, "QR Code Data") : _buildQRView(),
+                      widget.isEditMode
+                          ? (_selectedQRType == 'Visiting Card'
+                          ? VisitingCardEditor(
+                        isEditMode: widget.isEditMode,
+                        nameController: _nameController,
+                        titleController: _titleController,
+                        addressController: _addressController,
+                        phoneController: _phoneController,
+                        emailController: _emailController,
+                        websiteController: _websiteController,
+                      )
+                          : _buildTextField(_qrDataController, "QR Code Data"))
+                          : _buildQRView(),
                     ],
                   )
 
@@ -212,11 +239,23 @@ class _FlexCardPageState extends State<FlexCardPage> {
           leading: Icon(icon, color: Colors.white),
           title: Text(label, style: TextStyle(color: Colors.white)),
           onTap: () async {
-            if (await canLaunchUrl(Uri.parse(text))) {
-              await launchUrl(Uri.parse(text));
-            } else {
+            String rawUrl = controller.text.trim();
+
+            // Add https:// if missing
+            if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+              rawUrl = 'https://$rawUrl';
+            }
+
+            try {
+              final uri = Uri.parse(rawUrl);
+
+              // Try launching directly
+              if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+                throw 'Could not launch $rawUrl';
+              }
+            } catch (e) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Invalid link for $label')),
+                SnackBar(content: Text('Invalid link for $label:\n$rawUrl')),
               );
             }
           },
@@ -225,45 +264,23 @@ class _FlexCardPageState extends State<FlexCardPage> {
     );
   }
 
-  Widget _buildQREditor() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text("QR Code Action", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white24,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: DropdownButton<String>(
-            dropdownColor: Colors.deepPurple.shade300,
-            isExpanded: true,
-            borderRadius: BorderRadius.circular(10),
-            value: _selectedQRType,
-            items: ['Portfolio', 'Download CV', 'Visiting Card']
-                .map((type) => DropdownMenuItem(value: type, child: Text(type)))
-                .toList(),
-            onChanged: (value) => setState(() => _selectedQRType = value!),
-            underline: SizedBox(),
-          ),
-        ),
-        const SizedBox(height: 10),
-        _buildTextField(_qrDataController, "QR Code Data"),
-      ],
-    );
-  }
 
   Widget _buildQRView() {
-    final qrData = _qrDataController.text.trim();
+    String qrData = '';
 
-    if (_selectedQRType == 'Visiting Card') {
-      return ElevatedButton.icon(
-        onPressed: _showVisitingCardDialog,
-        icon: Icon(Icons.account_box_rounded),
-        label: Text("Show Visiting Card"),
-        style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+    if (_selectedQRType == 'Portfolio') {
+      qrData = _portfolioUrlController.text.trim();
+    } else if (_selectedQRType == 'Download CV') {
+      qrData = _cvUrlController.text.trim();
+    } else if (_selectedQRType == 'Visiting Card') {
+      return VisitingCardEditor(
+        isEditMode: widget.isEditMode,
+        nameController: _nameController,
+        titleController: _titleController,
+        addressController: _addressController,
+        phoneController: _phoneController,
+        emailController: _emailController,
+        websiteController: _websiteController,
       );
     }
 
@@ -280,108 +297,7 @@ class _FlexCardPageState extends State<FlexCardPage> {
       ),
     );
   }
-  void _showVisitingCardDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        backgroundColor: Colors.transparent,
-        child: AspectRatio(
-          aspectRatio: 2,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.blueGrey.shade900, Colors.black],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                // Left side (Name and Role)
-                Expanded(
-                  flex: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: Colors.white,
-                          radius: 28,
-                          child: Icon(Icons.person, color: Colors.black, size: 36),
-                        ),
-                        SizedBox(height: 20),
-                        Text(
-                          _nameController.text,
-                          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          _titleController.text,
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
 
-                // Right side (Contact Info)
-                Expanded(
-                  flex: 5,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.orange.shade800, Colors.red.shade700],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_addressController.text.isNotEmpty)
-                          _infoRow(Icons.home, _addressController.text),
-                        if (_phoneController.text.isNotEmpty)
-                          _infoRow(Icons.phone, _phoneController.text),
-                        if (_emailController.text.isNotEmpty)
-                          _infoRow(Icons.email, _emailController.text),
-                        if (_websiteController.text.isNotEmpty)
-                          _infoRow(Icons.language, _websiteController.text),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.white, size: 18),
-        SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(color: Colors.white, fontSize: 14),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
   Widget _buildQRTypeDropdown() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,7 +325,18 @@ class _FlexCardPageState extends State<FlexCardPage> {
                 .map((type) => DropdownMenuItem(value: type, child: Text(type)))
                 .toList(),
             onChanged: (value) {
-              setState(() => _selectedQRType = value!);
+              setState(() {
+                _selectedQRType = value!;
+                if (widget.isEditMode) {
+                  if (value == 'Portfolio') {
+                    _qrDataController.text = _portfolioUrlController.text;
+                  } else if (value == 'Download CV') {
+                    _qrDataController.text = _cvUrlController.text;
+                  } else if (value == 'Visiting Card') {
+                    _qrDataController.clear(); // no need for URL
+                  }
+                }
+              });
             },
             underline: SizedBox(),
           ),
